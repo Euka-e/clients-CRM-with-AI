@@ -149,6 +149,7 @@ export default function ClientDetailPage({ params }: ClientDetailPageProps) {
         await updateClient({
           id: client._id as Id<"clients">,
           aiAnalysis: data.analysis,
+          aiAnalysisGeneratedAt: Date.now(),
           ...(aiPriorityValid && { aiPriority: aiPriorityValid as "Alta" | "Media" | "Baja" }),
         })
         toast({ title: "Análisis generado", variant: "success" })

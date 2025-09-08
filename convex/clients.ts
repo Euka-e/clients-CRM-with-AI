@@ -107,6 +107,7 @@ export const updateClient = mutation({
   args: {
     id: v.id("clients"),
     aiAnalysis: v.optional(v.string()),
+    aiAnalysisGeneratedAt: v.optional(v.number()),
     aiPriority: v.optional(v.union(v.literal("Alta"), v.literal("Media"), v.literal("Baja"))),
     fullName: v.optional(v.string()),
     phoneNumber: v.optional(v.string()),
@@ -115,13 +116,13 @@ export const updateClient = mutation({
     company: v.optional(v.string()),
     notes: v.optional(v.string()),
     priority: v.optional(v.union(v.literal("Alta"), v.literal("Media"), v.literal("Baja"))),
+    lastInteraction: v.optional(v.number()),
+    createdAt: v.optional(v.number()),
+    updatedAt: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const patch: any = { ...args }
-    if (args.aiAnalysis) {
-      patch.aiAnalysisGeneratedAt = Date.now()
-    }
-    await ctx.db.patch(args.id, patch)
+    const { id, ...fields } = args
+    await ctx.db.patch(id, fields)
   },
 })
 
