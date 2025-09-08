@@ -5,77 +5,53 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Input } from "@/components/ui/input"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import {
   Users,
   UserPlus,
   BarChart3,
-  Bot,
   Phone,
-  Mail,
   Search,
   Filter,
-  MoreHorizontal,
-  Edit,
-  Trash2,
-  Eye,
 } from "lucide-react"
 import { useQuery } from "@/lib/convex"
 import { useState } from "react"
-import { formatDistanceToNow } from "date-fns"
-import { es } from "date-fns/locale"
 import { ClientFormDialog } from "@/components/client-form-dialog"
 import { DeleteClientDialog } from "@/components/delete-client-dialog"
-import { AIAssistantDialog } from "@/components/ai-assistant-dialog"
 import { AutomationPanel } from "@/components/automation-panel"
 import Link from "next/link"
-
-type Client = {
-  _id: string
-  name: string
-  phone: string
-  email: string
-  status: "active" | "inactive" | "potential"
-  lastInteraction: string
-  notes?: string
-  priority?: "high" | "medium" | "low"
-  createdAt: string
-}
+import { Client, ClientStats } from "@/interfaces/IClient"
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu"
+import { MoreVertical } from "lucide-react"
 
 export default function HomePage() {
-  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive" | "potential">("all")
-  const [sortBy, setSortBy] = useState<"lastInteraction" | "createdAt" | "name">("lastInteraction")
-  const [searchTerm, setSearchTerm] = useState("")
-
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
   const [editDialogOpen, setEditDialogOpen] = useState(false)
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
-  const [aiDialogOpen, setAiDialogOpen] = useState(false)
+  const [statusFilter, setStatusFilter] = useState<"all" | "Activo" | "Inactivo" | "Potencial">("all")
+  const [sortBy, setSortBy] = useState<"lastInteraction" | "createdAt" | "fullName">("lastInteraction")
+  const [searchTerm, setSearchTerm] = useState("")
   const [selectedClient, setSelectedClient] = useState<Client | null>(null)
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
+  const [doubleConfirmOpen, setDoubleConfirmOpen] = useState(false)
 
-  const stats = useQuery<{ total: number; active: number; inactive: number; potential: number }>("clients:getStats")
-  const allClients = useQuery<Client[]>("clients:list")
+  const convexStatus = statusFilter === "all" ? undefined : statusFilter
 
-  const filteredClients = allClients
-    ?.filter((client) => {
-      const matchesSearch =
-        client.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        client.phone.includes(searchTerm) ||
-        client.email?.toLowerCase().includes(searchTerm.toLowerCase())
+  const convexSort =
+    sortBy === "fullName"
+      ? "fullName"
+      : sortBy === "lastInteraction"
+        ? "lastInteraction"
+        : "createdAt"
 
-      const matchesStatus = statusFilter === "all" || client.status === statusFilter
+  const stats = useQuery<ClientStats>("clients:getStats")
+  const clients = useQuery<Client[]>("clients:list", { status: convexStatus, sortBy: convexSort })
 
-      return matchesSearch && matchesStatus
-    })
-    .sort((a, b) => {
-      if (sortBy === "lastInteraction") {
-        return new Date(b.lastInteraction).getTime() - new Date(a.lastInteraction).getTime()
-      }
-      if (sortBy === "createdAt") {
-        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-      }
-      return a.name.localeCompare(b.name)
-    })
+  const filteredClients = clients?.filter((client) => {
+    const matchesSearch =
+      client.fullName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      client.phoneNumber?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      client.email?.toLowerCase().includes(searchTerm.toLowerCase())
+    return matchesSearch
+  })
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -90,60 +66,6 @@ export default function HomePage() {
     }
   }
 
-  const getStatusLabel = (status: string) => {
-    switch (status) {
-      case "active":
-        return "Activo"
-      case "potential":
-        return "Potencial"
-      case "inactive":
-        return "Inactivo"
-      default:
-        return status
-    }
-  }
-
-  const getPriorityColor = (priority?: string) => {
-    switch (priority) {
-      case "high":
-        return "bg-red-100 text-red-800 border-red-200"
-      case "medium":
-        return "bg-yellow-100 text-yellow-800 border-yellow-200"
-      case "low":
-        return "bg-green-100 text-green-800 border-green-200"
-      default:
-        return "bg-gray-100 text-gray-800 border-gray-200"
-    }
-  }
-
-  const getPriorityLabel = (priority?: string) => {
-    switch (priority) {
-      case "high":
-        return "Alta"
-      case "medium":
-        return "Media"
-      case "low":
-        return "Baja"
-      default:
-        return "Sin prioridad"
-    }
-  }
-
-  const handleEditClient = (client: Client) => {
-    setSelectedClient(client)
-    setEditDialogOpen(true)
-  }
-
-  const handleDeleteClient = (client: Client) => {
-    setSelectedClient(client)
-    setDeleteDialogOpen(true)
-  }
-
-  const handleAIAssistant = (client: Client) => {
-    setSelectedClient(client)
-    setAiDialogOpen(true)
-  }
-
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b border-border bg-card/50 backdrop-blur-sm">
@@ -154,14 +76,12 @@ export default function HomePage() {
                 <Users className="h-5 w-5 text-primary-foreground" />
               </div>
               <div>
-                <h1 className="text-xl font-bold text-foreground">CRM Pro</h1>
+                <h1 className="text-2xl font-bold tracking-tight text-foreground">
+                  CRM
+                </h1>
                 <p className="text-sm text-muted-foreground">Customer Relationship Management</p>
               </div>
             </div>
-            <Button variant="outline" size="sm" onClick={() => selectedClient && setAiDialogOpen(true)}>
-              <Bot className="h-4 w-4 mr-2" />
-              AI Assistant
-            </Button>
           </div>
         </div>
       </header>
@@ -179,7 +99,7 @@ export default function HomePage() {
               <Users className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-foreground">{stats?.total || 0}</div>
+              <div className="text-2xl font-bold text-foreground">{stats?.totalClients || 0}</div>
               <p className="text-xs text-muted-foreground">En tu cartera</p>
             </CardContent>
           </Card>
@@ -190,7 +110,7 @@ export default function HomePage() {
               <BarChart3 className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-foreground">{stats?.active || 0}</div>
+              <div className="text-2xl font-bold text-foreground">{stats?.activeClients || 0}</div>
               <p className="text-xs text-muted-foreground">Con relación activa</p>
             </CardContent>
           </Card>
@@ -201,7 +121,7 @@ export default function HomePage() {
               <UserPlus className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-foreground">{stats?.potential || 0}</div>
+              <div className="text-2xl font-bold text-foreground">{stats?.potentialClients || 0}</div>
               <p className="text-xs text-muted-foreground">Oportunidades de negocio</p>
             </CardContent>
           </Card>
@@ -212,7 +132,7 @@ export default function HomePage() {
               <Phone className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-foreground">{stats?.inactive || 0}</div>
+              <div className="text-2xl font-bold text-foreground">{stats?.inactiveClients || 0}</div>
               <p className="text-xs text-muted-foreground">Requieren atención</p>
             </CardContent>
           </Card>
@@ -241,18 +161,18 @@ export default function HomePage() {
                 />
               </div>
             </div>
-            <Select value={statusFilter} onValueChange={(value: any) => setStatusFilter(value)}>
+            <Select value={statusFilter} onValueChange={(value: "all" | "Activo" | "Inactivo" | "Potencial") => setStatusFilter(value)}>
               <SelectTrigger className="w-full sm:w-48">
                 <SelectValue placeholder="Estado" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Todos los estados</SelectItem>
-                <SelectItem value="active">Activo</SelectItem>
-                <SelectItem value="potential">Potencial</SelectItem>
-                <SelectItem value="inactive">Inactivo</SelectItem>
+                <SelectItem value="Activo">Activo</SelectItem>
+                <SelectItem value="Potencial">Potencial</SelectItem>
+                <SelectItem value="Inactivo">Inactivo</SelectItem>
               </SelectContent>
             </Select>
-            <Select value={sortBy} onValueChange={(value: any) => setSortBy(value)}>
+            <Select value={sortBy} onValueChange={(value: "lastInteraction" | "createdAt" | "fullName") => setSortBy(value)}>
               <SelectTrigger className="w-full sm:w-48">
                 <SelectValue placeholder="Ordenar por" />
               </SelectTrigger>
@@ -264,7 +184,6 @@ export default function HomePage() {
             </Select>
           </CardContent>
         </Card>
-
         <Card className="border-border">
           <CardHeader className="flex flex-row items-center justify-between">
             <div>
@@ -287,74 +206,46 @@ export default function HomePage() {
                     key={client._id}
                     className="flex items-center justify-between p-4 border border-border rounded-lg hover:bg-muted/50 transition-colors"
                   >
-                    <div className="flex items-center gap-4">
+                    <Link href={`/clients/${client._id}`} className="flex items-center gap-4 group">
                       <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
-                        <Users className="h-5 w-5 text-primary" />
+                        {client.fullName?.charAt(0) || "C"}
                       </div>
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1">
-                          <Link href={`/clients/${client._id}`}>
-                            <h3 className="font-semibold text-foreground hover:text-primary transition-colors cursor-pointer">
-                              {client.name}
-                            </h3>
-                          </Link>
-                          <Badge className={getStatusColor(client.status)}>{getStatusLabel(client.status)}</Badge>
-                          {client.priority && (
-                            <Badge className={getPriorityColor(client.priority)}>
-                              {getPriorityLabel(client.priority)}
-                            </Badge>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                          <div className="flex items-center gap-1">
-                            <Phone className="h-3 w-3" />
-                            {client.phone}
-                          </div>
-                          {client.email && (
-                            <div className="flex items-center gap-1">
-                              <Mail className="h-3 w-3" />
-                              {client.email}
-                            </div>
-                          )}
-                        </div>
+                      <div>
+                        <p className="font-medium text-foreground group-hover:underline">{client.fullName}</p>
+                        {client.phoneNumber && (
+                          <p className="text-xs text-muted-foreground">{client.phoneNumber}</p>
+                        )}
+                        {client.email && (
+                          <p className="text-xs text-muted-foreground">{client.email}</p>
+                        )}
                       </div>
-                    </div>
-                    <div className="flex items-center gap-4">
-                      <div className="text-right">
-                        <p className="text-sm text-muted-foreground">Última interacción</p>
-                        <p className="text-sm font-medium text-foreground">
-                          {formatDistanceToNow(new Date(client.lastInteraction), {
-                            addSuffix: true,
-                            locale: es,
-                          })}
-                        </p>
-                      </div>
+                    </Link>
+                    <div className="flex items-center gap-2">
+                      <Badge className={getStatusColor(toFrontendStatus(client.relationshipStatus))}>
+                        {client.relationshipStatus}
+                      </Badge>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" className="h-8 w-8 p-0">
-                            <MoreHorizontal className="h-4 w-4" />
+                          <Button variant="ghost" size="icon">
+                            <MoreVertical className="h-4 w-4" />
                           </Button>
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem asChild>
-                            <Link href={`/clients/${client._id}`}>
-                              <Eye className="mr-2 h-4 w-4" />
-                              Ver Detalle
-                            </Link>
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleEditClient(client)}>
-                            <Edit className="mr-2 h-4 w-4" />
+                        <DropdownMenuContent>
+                          <DropdownMenuItem
+                            onClick={() => {
+                              setSelectedClient(client)
+                              setEditDialogOpen(true)
+                            }}
+                          >
                             Editar
                           </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleAIAssistant(client)}>
-                            <Bot className="mr-2 h-4 w-4" />
-                            Asistente IA
-                          </DropdownMenuItem>
                           <DropdownMenuItem
-                            onClick={() => handleDeleteClient(client)}
-                            className="text-destructive focus:text-destructive"
+                            onClick={() => {
+                              setSelectedClient(client)
+                              setConfirmDeleteOpen(true)
+                            }}
+                            className="text-destructive"
                           >
-                            <Trash2 className="mr-2 h-4 w-4" />
                             Eliminar
                           </DropdownMenuItem>
                         </DropdownMenuContent>
@@ -381,28 +272,44 @@ export default function HomePage() {
           </CardContent>
         </Card>
       </main>
-
       <ClientFormDialog open={createDialogOpen} onOpenChange={setCreateDialogOpen} mode="create" />
-
       {selectedClient && (
         <>
           <ClientFormDialog
             open={editDialogOpen}
             onOpenChange={setEditDialogOpen}
-            client={selectedClient}
+            client={{
+              ...selectedClient,
+              phoneNumber: selectedClient.phoneNumber ?? "",
+              email: selectedClient.email ?? "",
+            }}
             mode="edit"
           />
 
-          <DeleteClientDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen} client={selectedClient} />
-
-          <AIAssistantDialog
-            open={aiDialogOpen}
-            onOpenChange={setAiDialogOpen}
+          <DeleteClientDialog
+            open={confirmDeleteOpen}
+            onOpenChange={(open) => {
+              setConfirmDeleteOpen(open)
+              if (!open && doubleConfirmOpen) setDoubleConfirmOpen(false)
+            }}
             client={selectedClient}
-            interactions={[]}
+            onDelete={() => setDoubleConfirmOpen(true)}
+            confirmOnly
+          />
+
+          <DeleteClientDialog
+            open={doubleConfirmOpen}
+            onOpenChange={setDoubleConfirmOpen}
+            client={selectedClient}
           />
         </>
       )}
     </div>
   )
+}
+
+function toFrontendStatus(r: string) {
+  if (r === "Activo") return "active"
+  if (r === "Inactivo") return "inactive"
+  return "potential"
 }

@@ -5,6 +5,7 @@ import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { useMutation } from "@/lib/convex"
+import { useToast } from "@/components/ui/use-toast"
 
 import {
   Dialog,
@@ -18,12 +19,11 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
-import { toast } from "sonner"
 import { Loader2 } from "lucide-react"
 
 const interactionSchema = z.object({
-  type: z.enum(["Llamada telefónica", "Email enviado", "Reunión", "Mensaje", "Otro"]),
-  notes: z.string().min(5, "La descripción debe tener al menos 5 caracteres"),
+  type: z.enum(["Llamada", "Email", "Reunión", "Mensaje", "Otro"]),
+  description: z.string().min(2, "La descripción es requerida"),
 })
 
 type InteractionFormData = z.infer<typeof interactionSchema>
@@ -38,12 +38,13 @@ interface InteractionDialogProps {
 export function InteractionDialog({ open, onOpenChange, clientId, clientName }: InteractionDialogProps) {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const addInteraction = useMutation("interactions:create")
+  const { toast } = useToast()
 
   const form = useForm<InteractionFormData>({
     resolver: zodResolver(interactionSchema),
     defaultValues: {
-      type: "Llamada telefónica",
-      notes: "",
+      type: "Llamada",
+      description: "",
     },
   })
 
@@ -53,14 +54,13 @@ export function InteractionDialog({ open, onOpenChange, clientId, clientName }: 
       await addInteraction({
         clientId,
         type: data.type,
-        notes: data.notes,
+        description: data.description,
       })
-
-      toast.success("Interacción registrada exitosamente")
+      toast({ title: "Interacción registrada exitosamente", variant: "success" })
       form.reset()
       onOpenChange(false)
     } catch (error) {
-      toast.error("Error al registrar la interacción")
+      toast({ title: "Error al registrar la interacción", variant: "error" })
       console.error("Error:", error)
     } finally {
       setIsSubmitting(false)
@@ -90,8 +90,8 @@ export function InteractionDialog({ open, onOpenChange, clientId, clientName }: 
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      <SelectItem value="Llamada telefónica">Llamada telefónica</SelectItem>
-                      <SelectItem value="Email enviado">Email enviado</SelectItem>
+                      <SelectItem value="Llamada">Llamada</SelectItem>
+                      <SelectItem value="Email">Email</SelectItem>
                       <SelectItem value="Reunión">Reunión</SelectItem>
                       <SelectItem value="Mensaje">Mensaje</SelectItem>
                       <SelectItem value="Otro">Otro</SelectItem>
@@ -104,7 +104,7 @@ export function InteractionDialog({ open, onOpenChange, clientId, clientName }: 
 
             <FormField
               control={form.control}
-              name="notes"
+              name="description"
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Descripción *</FormLabel>

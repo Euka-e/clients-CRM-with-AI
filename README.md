@@ -1,30 +1,62 @@
-# Modern minimalist styles
+# CRM de Clientes con IA
 
-*Automatically synced with your [v0.app](https://v0.app) deployments*
+## Descripción
 
-[![Deployed on Vercel](https://img.shields.io/badge/Deployed%20on-Vercel-black?style=for-the-badge&logo=vercel)](https://vercel.com/euka-es-projects/v0-modern-minimalist-styles)
-[![Built with v0](https://img.shields.io/badge/Built%20with-v0.app-black?style=for-the-badge)](https://v0.app/chat/projects/SOzxECUkIOk)
+CRM moderno para gestión de clientes con:
+- Base de datos en tiempo real (Convex)
+- Dashboard y vistas en React + Next.js + ShadcnUI
+- Asistente IA (análisis y categorización)
+- Automatización con QStash (Upstash) para marcar clientes inactivos
+- Deploy en Vercel
 
-## Overview
+## Stack
 
-This repository will stay in sync with your deployed chats on [v0.app](https://v0.app).
-Any changes you make to your deployed app will be automatically pushed to this repository from [v0.app](https://v0.app).
+- pnpm
+- Next.js
+- React + ShadcnUI
+- Convex (BD realtime)
+- Upstash QStash (automatización)
+- Vercel AI SDK (opcional, para IA)
+- Vercel (deploy)
 
-## Deployment
+## Instalación
 
-Your project is live at:
+```sh
+pnpm install
+pnpm dev
+```
 
-**[https://vercel.com/euka-es-projects/v0-modern-minimalist-styles](https://vercel.com/euka-es-projects/v0-modern-minimalist-styles)**
+## Variables de entorno
 
-## Build your app
+Crea un archivo `.env.local` con:
 
-Continue building your app on:
+```
+NEXT_PUBLIC_CONVEX_URL=tu_url_convex
+OPENAI_API_KEY=tu_api_key_openai
+QSTASH_TOKEN=tu_token_qstash
+QSTASH_CURRENT_SIGNING_KEY=tu_signing_key_actual
+QSTASH_NEXT_SIGNING_KEY=tu_signing_key_siguiente
+VERCEL_URL=tu_url_deploy.vercel.app
+```
 
-**[https://v0.app/chat/projects/SOzxECUkIOk](https://v0.app/chat/projects/SOzxECUkIOk)**
+## Automatización con QStash
 
-## How It Works
+- El endpoint `/api/qstash/setup` crea un schedule real en Upstash QStash si tienes las variables configuradas.
+- El job llama a `/api/cron/check-inactive-clients` cada 6 horas (por defecto) y marca como "Inactivo" a los clientes sin interacciones recientes.
 
-1. Create and modify your project using [v0.app](https://v0.app)
-2. Deploy your chats from the v0 interface
-3. Changes are automatically pushed to this repository
-4. Vercel deploys the latest version from this repository
+## Flujo IA
+
+- Botón "Analizar cliente": llama a `/api/ai/analyze-client` y guarda análisis y prioridad sugerida.
+- Botón "Categorizar automáticamente": llama a `/api/ai/categorize-client` y actualiza el estado del cliente.
+
+## Scripts
+
+```sh
+pnpm dev        # desarrollo
+pnpm build      # build producción
+pnpm start      # producción
+```
+
+## Deploy
+
+El proyecto está listo para deploy en Vercel. Solo asegúrate de configurar las variables de entorno en el dashboard de Vercel.

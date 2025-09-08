@@ -5,6 +5,7 @@ import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { useMutation } from "@/lib/convex"
+import { useToast } from "@/components/ui/use-toast"
 
 import {
   Dialog,
@@ -19,31 +20,31 @@ import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
-import { toast } from "sonner"
 import { Loader2 } from "lucide-react"
 
 const clientSchema = z.object({
-  name: z.string().min(2, "El nombre debe tener al menos 2 caracteres"),
-  phone: z.string().min(10, "El teléfono debe tener al menos 10 dígitos"),
+  fullName: z.string().min(2, "El nombre debe tener al menos 2 caracteres"),
+  phoneNumber: z.string().min(5, "Teléfono inválido"),
   email: z.string().email("Email inválido").optional().or(z.literal("")),
-  status: z.enum(["active", "inactive", "potential"]),
+  relationshipStatus: z.enum(["Activo", "Inactivo", "Potencial"]),
+  company: z.string().optional(),
   notes: z.string().optional(),
-  priority: z.enum(["high", "medium", "low"]).optional(),
+  priority: z.enum(["Alta", "Media", "Baja"]),
 })
 
-type ClientFormData = z.infer<typeof clientSchema>
 
 interface ClientFormDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   client?: {
     _id: string
-    name: string
-    phone: string
+    fullName: string
+    phoneNumber: string
     email: string
-    status: "active" | "inactive" | "potential"
+    relationshipStatus: "Activo" | "Inactivo" | "Potencial"
     notes?: string
-    priority?: "high" | "medium" | "low"
+    priority: "Alta" | "Media" | "Baja"
+    company?: string
   }
   mode: "create" | "edit"
 }
@@ -52,70 +53,49 @@ export function ClientFormDialog({ open, onOpenChange, client, mode }: ClientFor
   const [isSubmitting, setIsSubmitting] = useState(false)
   const createClient = useMutation("clients:create")
   const updateClient = useMutation("clients:update")
+  const { toast } = useToast()
 
-  const form = useForm<ClientFormData>({
+  const form = useForm<z.infer<typeof clientSchema>>({
     resolver: zodResolver(clientSchema),
     defaultValues: {
-      name: client?.name || "",
-      phone: client?.phone || "",
+      fullName: client?.fullName || "",
+      phoneNumber: client?.phoneNumber || "",
       email: client?.email || "",
-      status: client?.status || "potential",
+      relationshipStatus: client?.relationshipStatus || "Potencial",
       notes: client?.notes || "",
-      priority: client?.priority || "medium",
+      priority: client?.priority || "Media",
+      company: client?.company || "",
     },
   })
 
-  const onSubmit = async (data: ClientFormData) => {
+  const onSubmit = async (values: z.infer<typeof clientSchema>) => {
     setIsSubmitting(true)
     try {
       const submitData = {
-        ...data,
-        email: data.email || "",
-        notes: data.notes || "",
-        lastInteraction: new Date().toISOString().split("T")[0],
+        fullName: values.fullName,
+        phoneNumber: values.phoneNumber,
+        email: values.email || undefined,
+        relationshipStatus: values.relationshipStatus,
+        company: values.company || undefined,
+        notes: values.notes || undefined,
+        priority: values.priority,
       }
 
       if (mode === "create") {
-        await createClient(submitData)
-        toast.success("Cliente creado exitosamente")
-      } else if (client) {
-        await updateClient(client._id, submitData)
-        toast.success("Cliente actualizado exitosamente")
+        await createClient(submitData, {})
+        toast({ title: "Cliente creado exitosamente", variant: "success" })
+      } else if (client?._id) {
+        await updateClient({ id: client._id, ...submitData }, {})
+        toast({ title: "Cliente actualizado exitosamente", variant: "success" })
       }
 
       form.reset()
       onOpenChange(false)
     } catch (error) {
-      toast.error("Error al guardar el cliente")
+      toast({ title: "Error al guardar el cliente", variant: "error" })
       console.error("Error:", error)
     } finally {
       setIsSubmitting(false)
-    }
-  }
-
-  const getStatusLabel = (status: string) => {
-    switch (status) {
-      case "active":
-        return "Activo"
-      case "potential":
-        return "Potencial"
-      case "inactive":
-        return "Inactivo"
-      default:
-        return status
-    }
-  }
-
-  const getPriorityLabel = (priority: string) => {
-    switch (priority) {
-      case "high":
-        return "Alta"
-      case "medium":
-        return "Media"
-      case "low":
-        return "Baja"
-      default:
-        return priority
     }
   }
 
@@ -134,7 +114,7 @@ export function ClientFormDialog({ open, onOpenChange, client, mode }: ClientFor
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <FormField
                 control={form.control}
-                name="name"
+                name="fullName"
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Nombre Completo *</FormLabel>
@@ -148,7 +128,7 @@ export function ClientFormDialog({ open, onOpenChange, client, mode }: ClientFor
 
               <FormField
                 control={form.control}
-                name="phone"
+                name="phoneNumber"
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Teléfono *</FormLabel>
@@ -176,7 +156,7 @@ export function ClientFormDialog({ open, onOpenChange, client, mode }: ClientFor
 
               <FormField
                 control={form.control}
-                name="status"
+                name="relationshipStatus"
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Estado de Relación *</FormLabel>
@@ -187,9 +167,9 @@ export function ClientFormDialog({ open, onOpenChange, client, mode }: ClientFor
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        <SelectItem value="potential">{getStatusLabel("potential")}</SelectItem>
-                        <SelectItem value="active">{getStatusLabel("active")}</SelectItem>
-                        <SelectItem value="inactive">{getStatusLabel("inactive")}</SelectItem>
+                        <SelectItem value="Activo">Activo</SelectItem>
+                        <SelectItem value="Inactivo">Inactivo</SelectItem>
+                        <SelectItem value="Potencial">Potencial</SelectItem>
                       </SelectContent>
                     </Select>
                     <FormMessage />
@@ -210,9 +190,9 @@ export function ClientFormDialog({ open, onOpenChange, client, mode }: ClientFor
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        <SelectItem value="high">{getPriorityLabel("high")}</SelectItem>
-                        <SelectItem value="medium">{getPriorityLabel("medium")}</SelectItem>
-                        <SelectItem value="low">{getPriorityLabel("low")}</SelectItem>
+                        <SelectItem value="Alta">Alta</SelectItem>
+                        <SelectItem value="Media">Media</SelectItem>
+                        <SelectItem value="Baja">Baja</SelectItem>
                       </SelectContent>
                     </Select>
                     <FormMessage />

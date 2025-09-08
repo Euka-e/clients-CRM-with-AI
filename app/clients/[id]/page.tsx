@@ -1,19 +1,41 @@
 "use client"
 
-import { useQuery } from "@/lib/convex"
+import { useQuery, useMutation } from "@/lib/convex"
 import { useState } from "react"
 import { formatDistanceToNow, format } from "date-fns"
 import { es } from "date-fns/locale"
 import Link from "next/link"
-
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
-import { ArrowLeft, Users, Phone, Mail, Calendar, MessageSquare, Edit, Plus, Bot, Activity } from "lucide-react"
+import { ArrowLeft, Users, Phone, Mail, Calendar, MessageSquare, Edit, Plus, Bot, Activity, Settings } from "lucide-react"
 import { ClientFormDialog } from "@/components/client-form-dialog"
 import { InteractionDialog } from "@/components/interaction-dialog"
-import { AIAssistantDialog } from "@/components/ai-assistant-dialog"
+import { useToast } from "@/components/ui/use-toast"
+import { Id } from "@/convex/_generated/dataModel"
+import ReactMarkdown from "react-markdown"
+
+type Client = {
+  _id: string
+  fullName: string
+  phoneNumber: string
+  email?: string
+  relationshipStatus: "Activo" | "Inactivo" | "Potencial"
+  notes?: string
+  priority: "Alta" | "Media" | "Baja"
+  company?: string
+  aiAnalysis?: string
+  aiAnalysisGeneratedAt?: number
+  lastInteraction: number
+}
+
+type Interaction = {
+  _id: string
+  type: string
+  description: string
+  createdAt: number
+}
 
 interface ClientDetailPageProps {
   params: {
@@ -24,10 +46,14 @@ interface ClientDetailPageProps {
 export default function ClientDetailPage({ params }: ClientDetailPageProps) {
   const [editDialogOpen, setEditDialogOpen] = useState(false)
   const [interactionDialogOpen, setInteractionDialogOpen] = useState(false)
-  const [aiDialogOpen, setAiDialogOpen] = useState(false)
+  const [isAnalyzing, setIsAnalyzing] = useState(false)
+  const [isCategorizing, setIsCategorizing] = useState(false)
+  const [suggestedCategory, setSuggestedCategory] = useState<string | null>(null)
 
-  const client = useQuery<any>("clients:getById", params.id)
-  const interactions = useQuery<any[]>("interactions:getByClientId", params.id)
+  const client = useQuery<Client>("clients:getById", { id: params.id })
+  const interactions = useQuery<Interaction[]>("interactions:getByClientId", { clientId: params.id })
+  const updateClient = useMutation("clients:update")
+  const { toast } = useToast()
 
   if (!client) {
     return (
@@ -50,19 +76,6 @@ export default function ClientDetailPage({ params }: ClientDetailPageProps) {
         return "bg-gray-100 text-gray-800 border-gray-200"
       default:
         return "bg-gray-100 text-gray-800 border-gray-200"
-    }
-  }
-
-  const getStatusLabel = (status: string) => {
-    switch (status) {
-      case "active":
-        return "Activo"
-      case "potential":
-        return "Potencial"
-      case "inactive":
-        return "Inactivo"
-      default:
-        return status
     }
   }
 
@@ -107,8 +120,78 @@ export default function ClientDetailPage({ params }: ClientDetailPageProps) {
     }
   }
 
+  const handleAnalyze = async () => {
+    if (!client) return
+    setIsAnalyzing(true)
+    try {
+      const res = await fetch("/api/ai/analyze-client", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ client, interactions }),
+      })
+      const data = await res.json()
+      if (data.analysis) {
+        const priorityRegex = /\b(Alta|Media|Baja)\b/i
+        const normalized = data.analysis.normalize("NFD").replace(/\p{Diacritic}/gu, "")
+        const match = priorityRegex.exec(normalized)
+        const aiPriority = match
+          ? match[1].charAt(0).toUpperCase() + match[1].slice(1).toLowerCase()
+          : undefined
+
+        const validPriorities = ["Alta", "Media", "Baja"] as const
+        type ValidPriority = typeof validPriorities[number]
+
+        const aiPriorityValid: ValidPriority | undefined =
+          validPriorities.includes(aiPriority as ValidPriority)
+            ? (aiPriority as ValidPriority)
+            : undefined
+
+        await updateClient({
+          id: client._id as Id<"clients">,
+          aiAnalysis: data.analysis,
+          ...(aiPriorityValid && { aiPriority: aiPriorityValid as "Alta" | "Media" | "Baja" }),
+        })
+        toast({ title: "Análisis generado", variant: "success" })
+      } else {
+        toast({ title: "No se pudo generar el análisis", variant: "error" })
+      }
+    } catch {
+      toast({ title: "Error al analizar cliente", variant: "error" })
+    } finally {
+      setIsAnalyzing(false)
+    }
+  }
+
+  const handleCategorize = async () => {
+    if (!client) return
+    setIsCategorizing(true)
+    try {
+      const res = await fetch("/api/ai/categorize-client", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ client, interactions }),
+      })
+      const data = await res.json()
+      if (data.category) {
+        setSuggestedCategory(data.category)
+        if (client.relationshipStatus !== data.category) {
+          await updateClient({ id: client._id as Id<"clients">, relationshipStatus: data.category })
+          toast({ title: `Estado actualizado a ${data.category}`, variant: "success" })
+        } else {
+          toast({ title: "El estado ya coincide", variant: "info" })
+        }
+      } else {
+        toast({ title: "No se pudo categorizar", variant: "error" })
+      }
+    } catch {
+      toast({ title: "Error al categorizar", variant: "error" })
+    } finally {
+      setIsCategorizing(false)
+    }
+  }
+
   return (
-    <div className="min-h-screen bg-background">
+    <div className="space-y-6">
       <header className="border-b border-border bg-card/50 backdrop-blur-sm">
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
@@ -125,16 +208,12 @@ export default function ClientDetailPage({ params }: ClientDetailPageProps) {
                   <Users className="h-5 w-5 text-primary" />
                 </div>
                 <div>
-                  <h1 className="text-xl font-bold text-foreground">{client.name}</h1>
+                  <h1 className="text-xl font-bold text-foreground">{client.fullName}</h1>
                   <p className="text-sm text-muted-foreground">Detalle del cliente</p>
                 </div>
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" onClick={() => setAiDialogOpen(true)}>
-                <Bot className="h-4 w-4 mr-2" />
-                Asistente IA
-              </Button>
               <Button variant="outline" size="sm" onClick={() => setEditDialogOpen(true)}>
                 <Edit className="h-4 w-4 mr-2" />
                 Editar
@@ -146,7 +225,6 @@ export default function ClientDetailPage({ params }: ClientDetailPageProps) {
 
       <main className="container mx-auto px-4 py-8">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Información del Cliente */}
           <div className="lg:col-span-1 space-y-6">
             <Card className="border-border">
               <CardHeader>
@@ -157,7 +235,15 @@ export default function ClientDetailPage({ params }: ClientDetailPageProps) {
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="flex items-center gap-2">
-                  <Badge className={getStatusColor(client.status)}>{getStatusLabel(client.status)}</Badge>
+                  <Badge className={getStatusColor(
+                    client.relationshipStatus === "Activo"
+                      ? "active"
+                      : client.relationshipStatus === "Inactivo"
+                        ? "inactive"
+                        : "potential"
+                  )}>
+                    {client.relationshipStatus}
+                  </Badge>
                   {client.priority && (
                     <Badge className={getPriorityColor(client.priority)}>{getPriorityLabel(client.priority)}</Badge>
                   )}
@@ -166,7 +252,7 @@ export default function ClientDetailPage({ params }: ClientDetailPageProps) {
                 <div className="space-y-3">
                   <div className="flex items-center gap-3">
                     <Phone className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-sm text-foreground">{client.phone}</span>
+                    <span className="text-sm text-foreground">{client.phoneNumber}</span>
                   </div>
 
                   {client.email && (
@@ -196,14 +282,20 @@ export default function ClientDetailPage({ params }: ClientDetailPageProps) {
                     <p className="text-sm text-muted-foreground">{client.notes}</p>
                   </div>
                 )}
-
                 {client.aiAnalysis && (
                   <div className="pt-4 border-t border-border">
                     <h4 className="text-sm font-medium text-foreground mb-2 flex items-center gap-2">
                       <Bot className="h-4 w-4" />
-                      Análisis IA
+                      Análisis autogenerado por IA
                     </h4>
-                    <p className="text-sm text-muted-foreground whitespace-pre-wrap">{client.aiAnalysis}</p>
+                    <div className="text-xs text-muted-foreground mb-2">
+                      {client.aiAnalysisGeneratedAt && (
+                        <>Generado {formatDistanceToNow(new Date(client.aiAnalysisGeneratedAt), { addSuffix: true, locale: es })}</>
+                      )}
+                    </div>
+                    <div className="prose max-w-none mt-2">
+                      <ReactMarkdown>{client.aiAnalysis}</ReactMarkdown>
+                    </div>
                   </div>
                 )}
               </CardContent>
@@ -211,22 +303,49 @@ export default function ClientDetailPage({ params }: ClientDetailPageProps) {
 
             <Card className="border-border">
               <CardHeader>
-                <CardTitle className="text-card-foreground">Acciones Rápidas</CardTitle>
+                <CardTitle className="text-card-foreground flex items-center gap-2">
+                  <Settings className="h-5 w-5" />
+                  Acciones Rápidas
+                </CardTitle>
+                <CardDescription>
+                  Registra interacciones y administra el estado del cliente
+                </CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
                 <Button className="w-full" onClick={() => setInteractionDialogOpen(true)}>
                   <Plus className="h-4 w-4 mr-2" />
                   Marcar Interacción
                 </Button>
-                <Button variant="outline" className="w-full bg-transparent" onClick={() => setAiDialogOpen(true)}>
-                  <Bot className="h-4 w-4 mr-2" />
-                  Asistente IA
-                </Button>
+
+                <div className="grid grid-cols-1 gap-3">
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    disabled={isAnalyzing}
+                    onClick={handleAnalyze}
+                  >
+                    {isAnalyzing && <Activity className="h-4 w-4 mr-2 animate-spin" />}
+                    {isAnalyzing ? "Analizando..." : "Analizar Cliente"}
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    className="w-full"
+                    disabled={isCategorizing}
+                    onClick={handleCategorize}
+                  >
+                    {isCategorizing && <Activity className="h-4 w-4 mr-2 animate-spin" />}
+                    {isCategorizing ? "Categorizando..." : "Categorizar Automáticamente"}
+                  </Button>
+                </div>
+
+                {suggestedCategory && (
+                  <div className="text-xs text-muted-foreground">
+                    Sugerido: <span className="font-medium">{suggestedCategory}</span>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>
-
-          {/* Historial de Interacciones */}
           <div className="lg:col-span-2">
             <Card className="border-border">
               <CardHeader>
@@ -242,11 +361,8 @@ export default function ClientDetailPage({ params }: ClientDetailPageProps) {
               <CardContent>
                 {interactions && interactions.length > 0 ? (
                   <div className="space-y-4">
-                    {interactions.map((interaction) => (
-                      <div
-                        key={interaction._id}
-                        className="flex items-start gap-4 p-4 border border-border rounded-lg bg-card/50"
-                      >
+                    {interactions.map((interaction: Interaction) => (
+                      <div key={interaction._id} className="flex items-start gap-4 p-4 border border-border rounded-lg bg-card/50">
                         <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
                           {getInteractionIcon(interaction.type)}
                         </div>
@@ -259,7 +375,9 @@ export default function ClientDetailPage({ params }: ClientDetailPageProps) {
                               {format(new Date(interaction.createdAt), "dd/MM/yyyy 'a las' HH:mm", { locale: es })}
                             </span>
                           </div>
-                          <p className="text-sm text-foreground">{interaction.notes}</p>
+                          <p className="text-sm text-foreground">
+                            {interaction.description}
+                          </p>
                         </div>
                       </div>
                     ))}
@@ -280,21 +398,20 @@ export default function ClientDetailPage({ params }: ClientDetailPageProps) {
           </div>
         </div>
       </main>
-
-      <ClientFormDialog open={editDialogOpen} onOpenChange={setEditDialogOpen} client={client} mode="edit" />
-
+      <ClientFormDialog
+        open={editDialogOpen}
+        onOpenChange={setEditDialogOpen}
+        client={{
+          ...client,
+          email: client.email ?? ""
+        }}
+        mode="edit"
+      />
       <InteractionDialog
         open={interactionDialogOpen}
         onOpenChange={setInteractionDialogOpen}
         clientId={params.id}
-        clientName={client.name}
-      />
-
-      <AIAssistantDialog
-        open={aiDialogOpen}
-        onOpenChange={setAiDialogOpen}
-        client={client}
-        interactions={interactions}
+        clientName={client.fullName}
       />
     </div>
   )

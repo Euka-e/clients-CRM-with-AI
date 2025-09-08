@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import { useMutation } from "@/lib/convex"
+import { useToast } from "@/components/ui/use-toast"
 
 import {
   AlertDialog,
@@ -13,7 +14,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { toast } from "sonner"
 import { Loader2 } from "lucide-react"
 
 interface DeleteClientDialogProps {
@@ -21,22 +21,28 @@ interface DeleteClientDialogProps {
   onOpenChange: (open: boolean) => void
   client: {
     _id: string
-    name: string
+    fullName: string
   }
 }
 
-export function DeleteClientDialog({ open, onOpenChange, client }: DeleteClientDialogProps) {
+export function DeleteClientDialog({ open, onOpenChange, client, onDelete, confirmOnly }: DeleteClientDialogProps & { onDelete?: () => void, confirmOnly?: boolean }) {
   const [isDeleting, setIsDeleting] = useState(false)
   const deleteClient = useMutation("clients:delete")
+  const { toast } = useToast()
 
   const handleDelete = async () => {
+    if (confirmOnly && onDelete) {
+      onOpenChange(false)
+      onDelete()
+      return
+    }
     setIsDeleting(true)
     try {
-      await deleteClient(client._id)
-      toast.success("Cliente eliminado exitosamente")
+      await deleteClient(client._id, {})
+      toast({ title: "Cliente eliminado exitosamente", variant: "success" })
       onOpenChange(false)
     } catch (error) {
-      toast.error("Error al eliminar el cliente")
+      toast({ title: "Error al eliminar el cliente", variant: "error" })
       console.error("Error:", error)
     } finally {
       setIsDeleting(false)
@@ -49,7 +55,7 @@ export function DeleteClientDialog({ open, onOpenChange, client }: DeleteClientD
         <AlertDialogHeader>
           <AlertDialogTitle>¿Estás seguro?</AlertDialogTitle>
           <AlertDialogDescription>
-            Esta acción no se puede deshacer. Se eliminará permanentemente el cliente <strong>{client.name}</strong> y
+            Esta acción no se puede deshacer. Se eliminará permanentemente el cliente <strong>{client.fullName}</strong> y
             todos sus datos asociados.
           </AlertDialogDescription>
         </AlertDialogHeader>
@@ -61,7 +67,7 @@ export function DeleteClientDialog({ open, onOpenChange, client }: DeleteClientD
             className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
           >
             {isDeleting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Eliminar Cliente
+            {confirmOnly ? "Sí, eliminar" : "Eliminar Cliente"}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

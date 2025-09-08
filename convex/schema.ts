@@ -3,32 +3,27 @@ import { v } from "convex/values"
 
 export default defineSchema({
   clients: defineTable({
-    // Campos básicos del cliente
     fullName: v.string(),
     phoneNumber: v.string(),
     email: v.optional(v.string()),
-
-    // Estado de la relación
-    relationshipStatus: v.union(v.literal("Activo"), v.literal("Inactivo"), v.literal("Potencial")),
-
-    // Fechas importantes
-    lastInteraction: v.number(), // timestamp
-    createdAt: v.number(), // timestamp
-    updatedAt: v.number(), // timestamp
-
-    // Información adicional
-    company: v.optional(v.string()),
-    notes: v.optional(v.string()),
-    priority: v.union(v.literal("Alta"), v.literal("Media"), v.literal("Baja")),
-
-    // Campos para IA
+    relationshipStatus: v.union(
+      v.literal("Activo"),
+      v.literal("Inactivo"),
+      v.literal("Potencial"),
+    ),
+    lastInteraction: v.number(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    priority: v.optional(v.union(v.literal("Alta"), v.literal("Media"), v.literal("Baja"))),
     aiAnalysis: v.optional(v.string()),
-    aiPriority: v.optional(v.string()),
+    aiPriority: v.optional(v.union(v.literal("Alta"), v.literal("Media"), v.literal("Baja"))),
+    aiAnalysisGeneratedAt: v.optional(v.number()),
   })
     .index("by_status", ["relationshipStatus"])
     .index("by_last_interaction", ["lastInteraction"])
-    .index("by_priority", ["priority"])
-    .index("by_created_at", ["createdAt"]),
+    .index("by_full_name", ["fullName"])
+    .index("by_status_last_interaction", ["relationshipStatus", "lastInteraction"])
+    .index("by_status_full_name", ["relationshipStatus", "fullName"]),
 
   interactions: defineTable({
     clientId: v.id("clients"),
@@ -40,8 +35,8 @@ export default defineSchema({
       v.literal("Otro"),
     ),
     description: v.string(),
-    date: v.number(), // timestamp
-    createdAt: v.number(), // timestamp
+    date: v.number(),
+    createdAt: v.number(),
   })
     .index("by_client", ["clientId"])
     .index("by_date", ["date"]),

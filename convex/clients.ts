@@ -1,30 +1,71 @@
 import { v } from "convex/values"
 import { mutation, query } from "./_generated/server"
 
-// Obtener todos los clientes
 export const getClients = query({
   args: {
-    status: v.optional(v.union(v.literal("Activo"), v.literal("Inactivo"), v.literal("Potencial"), v.literal("Todos"))),
-    sortBy: v.optional(v.union(v.literal("lastInteraction"), v.literal("createdAt"), v.literal("fullName"))),
+    status: v.optional(
+      v.union(
+        v.literal("Activo"),
+        v.literal("Inactivo"),
+        v.literal("Potencial"),
+        v.literal("Todos"),
+      ),
+    ),
+    sortBy: v.optional(
+      v.union(
+        v.literal("lastInteraction"),
+        v.literal("createdAt"),
+        v.literal("fullName"),
+      ),
+    ),
   },
   handler: async (ctx, args) => {
-    let clients
+    const sortBy = args.sortBy
+    const status = args.status && args.status !== "Todos" ? args.status : undefined
 
-    if (args.status && args.status !== "Todos") {
-      clients = await ctx.db
-        .query("clients")
-        .withIndex("by_status", (q) => q.eq("relationshipStatus", args.status))
-        .collect()
+    let clients
+    if (status) {
+      if (sortBy === "lastInteraction") {
+        clients = await ctx.db
+          .query("clients")
+          .withIndex("by_status_last_interaction", (q) =>
+            q.eq("relationshipStatus", status),
+          )
+          .collect()
+      } else if (sortBy === "fullName") {
+        clients = await ctx.db
+          .query("clients")
+          .withIndex("by_status_full_name", (q) =>
+            q.eq("relationshipStatus", status),
+          )
+          .collect()
+      } else {
+        clients = await ctx.db
+          .query("clients")
+          .withIndex("by_status", (q) => q.eq("relationshipStatus", status))
+          .collect()
+      }
     } else {
-      clients = await ctx.db.query("clients").collect()
+      if (sortBy === "lastInteraction") {
+        clients = await ctx.db
+          .query("clients")
+          .withIndex("by_last_interaction")
+          .collect()
+      } else if (sortBy === "fullName") {
+        clients = await ctx.db
+          .query("clients")
+          .withIndex("by_full_name")
+          .collect()
+      } else {
+        clients = await ctx.db.query("clients").collect()
+      }
     }
 
-    // Ordenar según el criterio especificado
-    if (args.sortBy === "lastInteraction") {
+    if (sortBy === "lastInteraction") {
       clients.sort((a, b) => b.lastInteraction - a.lastInteraction)
-    } else if (args.sortBy === "createdAt") {
+    } else if (sortBy === "createdAt") {
       clients.sort((a, b) => b.createdAt - a.createdAt)
-    } else if (args.sortBy === "fullName") {
+    } else if (sortBy === "fullName") {
       clients.sort((a, b) => a.fullName.localeCompare(b.fullName))
     }
 
@@ -32,7 +73,6 @@ export const getClients = query({
   },
 })
 
-// Obtener un cliente por ID
 export const getClient = query({
   args: { id: v.id("clients") },
   handler: async (ctx, args) => {
@@ -40,7 +80,6 @@ export const getClient = query({
   },
 })
 
-// Crear un nuevo cliente
 export const createClient = mutation({
   args: {
     fullName: v.string(),
@@ -64,10 +103,11 @@ export const createClient = mutation({
   },
 })
 
-// Actualizar un cliente
 export const updateClient = mutation({
   args: {
     id: v.id("clients"),
+    aiAnalysis: v.optional(v.string()),
+    aiPriority: v.optional(v.union(v.literal("Alta"), v.literal("Media"), v.literal("Baja"))),
     fullName: v.optional(v.string()),
     phoneNumber: v.optional(v.string()),
     email: v.optional(v.string()),
@@ -75,28 +115,30 @@ export const updateClient = mutation({
     company: v.optional(v.string()),
     notes: v.optional(v.string()),
     priority: v.optional(v.union(v.literal("Alta"), v.literal("Media"), v.literal("Baja"))),
-    aiAnalysis: v.optional(v.string()),
-    aiPriority: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const { id, ...updates } = args
-
-    return await ctx.db.patch(id, {
-      ...updates,
-      updatedAt: Date.now(),
-    })
+    const patch: any = { ...args }
+    if (args.aiAnalysis) {
+      patch.aiAnalysisGeneratedAt = Date.now()
+    }
+    await ctx.db.patch(args.id, patch)
   },
 })
 
-// Eliminar un cliente
 export const deleteClient = mutation({
   args: { id: v.id("clients") },
   handler: async (ctx, args) => {
+    const interactions = await ctx.db
+      .query("interactions")
+      .withIndex("by_client", (q) => q.eq("clientId", args.id))
+      .collect()
+    for (const interaction of interactions) {
+      await ctx.db.delete(interaction._id)
+    }
     return await ctx.db.delete(args.id)
   },
 })
 
-// Marcar interacción con cliente
 export const markInteraction = mutation({
   args: {
     clientId: v.id("clients"),
@@ -112,14 +154,12 @@ export const markInteraction = mutation({
   handler: async (ctx, args) => {
     const now = Date.now()
 
-    // Crear la interacción
     await ctx.db.insert("interactions", {
       ...args,
       date: now,
       createdAt: now,
     })
 
-    // Actualizar la última interacción del cliente
     await ctx.db.patch(args.clientId, {
       lastInteraction: now,
       updatedAt: now,
@@ -127,7 +167,6 @@ export const markInteraction = mutation({
   },
 })
 
-// Obtener estadísticas del dashboard
 export const getDashboardStats = query({
   handler: async (ctx) => {
     const clients = await ctx.db.query("clients").collect()
@@ -137,7 +176,6 @@ export const getDashboardStats = query({
     const potentialClients = clients.filter((c) => c.relationshipStatus === "Potencial").length
     const inactiveClients = clients.filter((c) => c.relationshipStatus === "Inactivo").length
 
-    // Clientes con interacciones en los últimos 30 días
     const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000
     const recentInteractions = clients.filter((c) => c.lastInteraction > thirtyDaysAgo).length
 
@@ -151,15 +189,17 @@ export const getDashboardStats = query({
   },
 })
 
-// Función para automatización - marcar clientes inactivos
 export const markInactiveClients = mutation({
   args: { daysThreshold: v.number() },
   handler: async (ctx, args) => {
-    const cutoffDate = Date.now() - args.daysThreshold * 24 * 60 * 60 * 1000
+    const daysThreshold = args.daysThreshold ?? 30
+    const cutoffDate = Date.now() - daysThreshold * 24 * 60 * 60 * 1000
 
     const clients = await ctx.db.query("clients").collect()
     const clientsToUpdate = clients.filter(
-      (client) => client.lastInteraction < cutoffDate && client.relationshipStatus !== "Inactivo",
+      (client) =>
+        client.lastInteraction < cutoffDate &&
+        client.relationshipStatus === "Activo"
     )
 
     for (const client of clientsToUpdate) {
@@ -172,3 +212,36 @@ export const markInactiveClients = mutation({
     return { count: clientsToUpdate.length }
   },
 })
+
+export const update = mutation({
+  args: {
+    id: v.id("clients"),
+    fullName: v.optional(v.string()),
+    phoneNumber: v.optional(v.string()),
+    email: v.optional(v.string()),
+    relationshipStatus: v.optional(
+      v.union(
+        v.literal("Activo"),
+        v.literal("Inactivo"),
+        v.literal("Potencial"),
+      ),
+    ),
+    priority: v.optional(
+      v.union(
+        v.literal("Alta"),
+        v.literal("Media"),
+        v.literal("Baja"),
+      ),
+    ),
+    notes: v.optional(v.string()),
+    company: v.optional(v.string()),
+    aiAnalysis: v.optional(v.string()),
+    lastInteraction: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const { id, ...fields } = args
+    await ctx.db.patch(id, fields)
+  },
+})
+
+export { getClient as getById }
