@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
@@ -67,6 +67,31 @@ export function ClientFormDialog({ open, onOpenChange, client, mode }: ClientFor
       company: client?.company || "",
     },
   })
+
+  useEffect(() => {
+    if (open && client) {
+      form.reset({
+        fullName: client.fullName || "",
+        phoneNumber: client.phoneNumber || "",
+        email: client.email || "",
+        relationshipStatus: client.relationshipStatus || "Potencial",
+        notes: client.notes || "",
+        priority: client.priority || "Media",
+        company: client.company || "",
+      })
+    }
+    if (open && !client && mode === "create") {
+      form.reset({
+        fullName: "",
+        phoneNumber: "",
+        email: "",
+        relationshipStatus: "Potencial",
+        notes: "",
+        priority: "Media",
+        company: "",
+      })
+    }
+  }, [client, open, mode, form])
 
   const onSubmit = async (values: z.infer<typeof clientSchema>) => {
     setIsSubmitting(true)
