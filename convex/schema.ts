@@ -18,6 +18,14 @@ export default defineSchema({
     aiAnalysis: v.optional(v.string()),
     aiPriority: v.optional(v.union(v.literal("Alta"), v.literal("Media"), v.literal("Baja"))),
     aiAnalysisGeneratedAt: v.optional(v.number()),
+    notes: v.optional(v.string()),
+    aiSuggestedCategory: v.optional(
+      v.union(
+        v.literal("Activo"),
+        v.literal("Potencial"),
+        v.literal("Inactivo")
+      )
+    ),
   })
     .index("by_status", ["relationshipStatus"])
     .index("by_last_interaction", ["lastInteraction"])

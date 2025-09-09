@@ -3,7 +3,6 @@
 import { useState } from "react"
 import { useMutation } from "@/lib/convex"
 import { useToast } from "@/components/ui/use-toast"
-
 import {
   AlertDialog,
   AlertDialogAction,
@@ -23,9 +22,17 @@ interface DeleteClientDialogProps {
     _id: string
     fullName: string
   }
+  onDelete?: () => void
+  confirmOnly?: boolean
 }
 
-export function DeleteClientDialog({ open, onOpenChange, client, onDelete, confirmOnly }: DeleteClientDialogProps & { onDelete?: () => void, confirmOnly?: boolean }) {
+export function DeleteClientDialog({
+  open,
+  onOpenChange,
+  client,
+  onDelete,
+  confirmOnly,
+}: DeleteClientDialogProps) {
   const [isDeleting, setIsDeleting] = useState(false)
   const deleteClient = useMutation("clients:delete")
   const { toast } = useToast()
@@ -38,9 +45,10 @@ export function DeleteClientDialog({ open, onOpenChange, client, onDelete, confi
     }
     setIsDeleting(true)
     try {
-      await deleteClient(client._id, {})
+      await deleteClient({ id: client._id })
       toast({ title: "Cliente eliminado exitosamente", variant: "success" })
       onOpenChange(false)
+      if (onDelete) onDelete()
     } catch (error) {
       toast({ title: "Error al eliminar el cliente", variant: "error" })
       console.error("Error:", error)

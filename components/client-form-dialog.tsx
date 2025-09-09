@@ -1,12 +1,10 @@
 "use client"
-
 import { useState, useEffect } from "react"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { useMutation } from "@/lib/convex"
 import { useToast } from "@/components/ui/use-toast"
-
 import {
   Dialog,
   DialogContent,
@@ -25,10 +23,10 @@ import { Loader2 } from "lucide-react"
 const clientSchema = z.object({
   fullName: z.string().min(2, "El nombre debe tener al menos 2 caracteres"),
   phoneNumber: z.string().min(5, "Teléfono inválido"),
-  email: z.string().email("Email inválido").optional().or(z.literal("")),
+  email: z.string().email("Email inválido"),
   relationshipStatus: z.enum(["Activo", "Inactivo", "Potencial"]),
   company: z.string().optional(),
-  notes: z.string().optional(),
+  notes: z.string().min(2, "Las notas son obligatorias"),
   priority: z.enum(["Alta", "Media", "Baja"]),
 })
 
@@ -71,13 +69,13 @@ export function ClientFormDialog({ open, onOpenChange, client, mode }: ClientFor
   useEffect(() => {
     if (open && client) {
       form.reset({
-        fullName: client.fullName || "",
-        phoneNumber: client.phoneNumber || "",
-        email: client.email || "",
-        relationshipStatus: client.relationshipStatus || "Potencial",
-        notes: client.notes || "",
-        priority: client.priority || "Media",
-        company: client.company || "",
+        fullName: client?.fullName || "",
+        phoneNumber: client?.phoneNumber || "",
+        email: client?.email || "",
+        relationshipStatus: client?.relationshipStatus || "Potencial",
+        notes: client?.notes || "",
+        priority: client?.priority || "Media",
+        company: client?.company || "",
       })
     }
     if (open && !client && mode === "create") {
@@ -105,7 +103,6 @@ export function ClientFormDialog({ open, onOpenChange, client, mode }: ClientFor
         notes: values.notes || undefined,
         priority: values.priority,
       }
-
       if (mode === "create") {
         await createClient(submitData, {})
         toast({ title: "Cliente creado exitosamente", variant: "success" })
@@ -113,7 +110,6 @@ export function ClientFormDialog({ open, onOpenChange, client, mode }: ClientFor
         await updateClient({ id: client._id, ...submitData }, {})
         toast({ title: "Cliente actualizado exitosamente", variant: "success" })
       }
-
       form.reset()
       onOpenChange(false)
     } catch (error) {
@@ -133,7 +129,6 @@ export function ClientFormDialog({ open, onOpenChange, client, mode }: ClientFor
             {mode === "create" ? "Completa la información del nuevo cliente." : "Actualiza la información del cliente."}
           </DialogDescription>
         </DialogHeader>
-
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -150,7 +145,6 @@ export function ClientFormDialog({ open, onOpenChange, client, mode }: ClientFor
                   </FormItem>
                 )}
               />
-
               <FormField
                 control={form.control}
                 name="phoneNumber"
@@ -164,13 +158,15 @@ export function ClientFormDialog({ open, onOpenChange, client, mode }: ClientFor
                   </FormItem>
                 )}
               />
-
               <FormField
                 control={form.control}
                 name="email"
-                render={({ field }) => (
+                render={({ field, fieldState }) => (
                   <FormItem>
-                    <FormLabel>Email</FormLabel>
+                    <FormLabel>
+                      Email{" "}
+                      <span className={fieldState.invalid ? "text-destructive" : ""}>*</span>
+                    </FormLabel>
                     <FormControl>
                       <Input placeholder="juan@ejemplo.com" type="email" {...field} />
                     </FormControl>
@@ -178,7 +174,6 @@ export function ClientFormDialog({ open, onOpenChange, client, mode }: ClientFor
                   </FormItem>
                 )}
               />
-
               <FormField
                 control={form.control}
                 name="relationshipStatus"
@@ -201,7 +196,6 @@ export function ClientFormDialog({ open, onOpenChange, client, mode }: ClientFor
                   </FormItem>
                 )}
               />
-
               <FormField
                 control={form.control}
                 name="priority"
@@ -225,17 +219,20 @@ export function ClientFormDialog({ open, onOpenChange, client, mode }: ClientFor
                 )}
               />
             </div>
-
             <FormField
               control={form.control}
               name="notes"
-              render={({ field }) => (
+              render={({ field, fieldState }) => (
                 <FormItem>
-                  <FormLabel>Notas</FormLabel>
+                  <FormLabel>
+                    Notas{" "}
+                    <span className={fieldState.invalid ? "text-destructive" : ""}>*</span>
+                  </FormLabel>
                   <FormControl>
                     <Textarea
                       placeholder="Información adicional sobre el cliente..."
                       className="resize-none"
+                      aria-invalid={fieldState.invalid}
                       {...field}
                     />
                   </FormControl>
@@ -243,7 +240,6 @@ export function ClientFormDialog({ open, onOpenChange, client, mode }: ClientFor
                 </FormItem>
               )}
             />
-
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
                 Cancelar

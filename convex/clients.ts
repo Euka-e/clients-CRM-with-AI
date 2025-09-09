@@ -106,6 +106,7 @@ export const createClient = mutation({
 export const updateClient = mutation({
   args: {
     id: v.id("clients"),
+    aiSuggestedCategory: v.optional(v.union(v.literal("Activo"), v.literal("Potencial"), v.literal("Inactivo"))),
     aiAnalysis: v.optional(v.string()),
     aiAnalysisGeneratedAt: v.optional(v.number()),
     aiPriority: v.optional(v.union(v.literal("Alta"), v.literal("Media"), v.literal("Baja"))),

@@ -1,7 +1,7 @@
 "use client"
 
 import { useQuery, useMutation } from "@/lib/convex"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { formatDistanceToNow, format } from "date-fns"
 import { es } from "date-fns/locale"
 import Link from "next/link"
@@ -9,12 +9,16 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
-import { ArrowLeft, Users, Phone, Mail, Calendar, MessageSquare, Edit, Plus, Bot, Activity, Settings } from "lucide-react"
+import { ArrowLeft, Users, Phone, Mail, Calendar, MessageSquare, Edit, Plus, Bot, Activity, Settings, Trash2 } from "lucide-react"
 import { ClientFormDialog } from "@/components/client-form-dialog"
 import { InteractionDialog } from "@/components/interaction-dialog"
+import { DeleteClientDialog } from "@/components/delete-client-dialog"
 import { useToast } from "@/components/ui/use-toast"
 import { Id } from "@/convex/_generated/dataModel"
 import ReactMarkdown from "react-markdown"
+import { useRouter } from "next/navigation"
+import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction } from "@/components/ui/alert-dialog"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
 
 type Client = {
   _id: string
@@ -27,6 +31,7 @@ type Client = {
   company?: string
   aiAnalysis?: string
   aiAnalysisGeneratedAt?: number
+  aiSuggestedCategory?: "Activo" | "Potencial" | "Inactivo"
   lastInteraction: number
 }
 
@@ -49,18 +54,49 @@ export default function ClientDetailPage({ params }: ClientDetailPageProps) {
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [isCategorizing, setIsCategorizing] = useState(false)
   const [suggestedCategory, setSuggestedCategory] = useState<string | null>(null)
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
+  const [showAnalysisModal, setShowAnalysisModal] = useState(false)
+  const [analysisPreview, setAnalysisPreview] = useState<string | null>(null)
+  const [notFound, setNotFound] = useState(false)
+  const router = useRouter()
 
   const client = useQuery<Client>("clients:getById", { id: params.id })
   const interactions = useQuery<Interaction[]>("interactions:getByClientId", { clientId: params.id })
   const updateClient = useMutation("clients:update")
   const { toast } = useToast()
 
+  useEffect(() => {
+    let timeout: NodeJS.Timeout
+    if (!client) {
+      timeout = setTimeout(() => setNotFound(true), 2000)
+    }
+    return () => clearTimeout(timeout)
+  }, [client])
+
+  useEffect(() => {
+    if (notFound) {
+      const redirectTimeout = setTimeout(() => {
+        router.replace("/")
+      }, 2000)
+      return () => clearTimeout(redirectTimeout)
+    }
+  }, [notFound, router])
+
+  useEffect(() => {
+    if (client?.aiSuggestedCategory) {
+      setSuggestedCategory(client.aiSuggestedCategory)
+    }
+  }, [client])
+
   if (!client) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">
           <Users className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-          <h3 className="text-lg font-semibold text-foreground mb-2">Cargando cliente...</h3>
+          <h3 className="text-lg font-semibold text-foreground mb-2">
+            {notFound ? "El cliente no existe. Redirigiendo..." : "Cargando cliente..."}
+          </h3>
         </div>
       </div>
     )
@@ -131,6 +167,8 @@ export default function ClientDetailPage({ params }: ClientDetailPageProps) {
       })
       const data = await res.json()
       if (data.analysis) {
+        setAnalysisPreview(data.analysis)
+        setShowAnalysisModal(true)
         const priorityRegex = /\b(Alta|Media|Baja)\b/i
         const normalized = data.analysis.normalize("NFD").replace(/\p{Diacritic}/gu, "")
         const match = priorityRegex.exec(normalized)
@@ -150,7 +188,7 @@ export default function ClientDetailPage({ params }: ClientDetailPageProps) {
           id: client._id as Id<"clients">,
           aiAnalysis: data.analysis,
           aiAnalysisGeneratedAt: Date.now(),
-          ...(aiPriorityValid && { aiPriority: aiPriorityValid as "Alta" | "Media" | "Baja" }),
+          ...(aiPriorityValid && { aiPriority: aiPriorityValid }),
         })
         toast({ title: "Análisis generado", variant: "success" })
       } else {
@@ -175,8 +213,12 @@ export default function ClientDetailPage({ params }: ClientDetailPageProps) {
       const data = await res.json()
       if (data.category) {
         setSuggestedCategory(data.category)
+        await updateClient({
+          id: client._id as Id<"clients">,
+          aiSuggestedCategory: data.category,
+          ...(client.relationshipStatus !== data.category && { relationshipStatus: data.category }),
+        })
         if (client.relationshipStatus !== data.category) {
-          await updateClient({ id: client._id as Id<"clients">, relationshipStatus: data.category })
           toast({ title: `Estado actualizado a ${data.category}`, variant: "success" })
         } else {
           toast({ title: "El estado ya coincide", variant: "info" })
@@ -192,7 +234,7 @@ export default function ClientDetailPage({ params }: ClientDetailPageProps) {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-2">
       <header className="border-b border-border bg-card/50 backdrop-blur-sm">
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
@@ -219,135 +261,151 @@ export default function ClientDetailPage({ params }: ClientDetailPageProps) {
                 <Edit className="h-4 w-4 mr-2" />
                 Editar
               </Button>
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={() => setConfirmDeleteOpen(true)}
+                className="flex items-center"
+              >
+                <Trash2 className="h-4 w-4 mr-2" />
+                Eliminar
+              </Button>
             </div>
           </div>
         </div>
       </header>
-
       <main className="container mx-auto px-4 py-8">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          <div className="lg:col-span-1 space-y-6">
+        <div className="grid grid-cols-1 xl:grid-cols-[1.5fr_0.7fr_1.5fr] gap-8">
+          <div className="space-y-6">
             <Card className="border-border">
               <CardHeader>
-                <CardTitle className="text-card-foreground flex items-center gap-2">
-                  <Users className="h-5 w-5" />
-                  Información del Cliente
+                <CardTitle className="flex items-center gap-2">
+                  <Users className="h-5 w-5" /> Información del Cliente
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="flex items-center gap-2">
-                  <Badge className={getStatusColor(
-                    client.relationshipStatus === "Activo"
-                      ? "active"
-                      : client.relationshipStatus === "Inactivo"
-                        ? "inactive"
-                        : "potential"
-                  )}>
+                <div className="flex flex-wrap gap-2">
+                  <Badge
+                    className={getStatusColor(
+                      client.relationshipStatus === "Activo"
+                        ? "active"
+                        : client.relationshipStatus === "Inactivo"
+                          ? "inactive"
+                          : "potential"
+                    )}
+                  >
                     {client.relationshipStatus}
                   </Badge>
                   {client.priority && (
-                    <Badge className={getPriorityColor(client.priority)}>{getPriorityLabel(client.priority)}</Badge>
+                    <Badge className="border">{getPriorityLabel(client.priority)}</Badge>
+                  )}
+                  {client.aiAnalysisGeneratedAt && (
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary/10 text-muted-foreground">
+                      IA {formatDistanceToNow(new Date(client.aiAnalysisGeneratedAt), { addSuffix: true, locale: es })}
+                    </span>
                   )}
                 </div>
-
                 <div className="space-y-3">
                   <div className="flex items-center gap-3">
                     <Phone className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-sm text-foreground">{client.phoneNumber}</span>
+                    <span className="text-sm">{client.phoneNumber}</span>
                   </div>
-
                   {client.email && (
                     <div className="flex items-center gap-3">
                       <Mail className="h-4 w-4 text-muted-foreground" />
-                      <span className="text-sm text-foreground">{client.email}</span>
+                      <span className="text-sm break-all">{client.email}</span>
                     </div>
                   )}
-
                   <div className="flex items-center gap-3">
                     <Calendar className="h-4 w-4 text-muted-foreground" />
                     <div className="text-sm">
-                      <p className="text-foreground">Última interacción</p>
+                      <p>Última interacción</p>
                       <p className="text-muted-foreground">
-                        {formatDistanceToNow(new Date(client.lastInteraction), {
-                          addSuffix: true,
-                          locale: es,
-                        })}
+                        {formatDistanceToNow(new Date(client.lastInteraction), { addSuffix: true, locale: es })}
                       </p>
                     </div>
                   </div>
                 </div>
-
                 {client.notes && (
-                  <div className="pt-4 border-t border-border">
-                    <h4 className="text-sm font-medium text-foreground mb-2">Notas</h4>
-                    <p className="text-sm text-muted-foreground">{client.notes}</p>
-                  </div>
-                )}
-                {client.aiAnalysis && (
-                  <div className="pt-4 border-t border-border">
-                    <h4 className="text-sm font-medium text-foreground mb-2 flex items-center gap-2">
-                      <Bot className="h-4 w-4" />
-                      Análisis autogenerado por IA
-                    </h4>
-                    <div className="text-xs text-muted-foreground mb-2">
-                      {client.aiAnalysisGeneratedAt && (
-                        <>Generado {formatDistanceToNow(new Date(client.aiAnalysisGeneratedAt), { addSuffix: true, locale: es })}</>
-                      )}
-                    </div>
-                    <div className="prose max-w-none mt-2">
-                      <ReactMarkdown>{client.aiAnalysis}</ReactMarkdown>
-                    </div>
+                  <div className="pt-4 border-t">
+                    <h4 className="text-sm font-medium mb-2">Notas</h4>
+                    <p className="text-sm text-muted-foreground whitespace-pre-line">{client.notes}</p>
                   </div>
                 )}
               </CardContent>
             </Card>
-
-            <Card className="border-border">
+            {(client.aiAnalysis || analysisPreview) && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Bot className="h-5 w-5" /> Análisis IA
+                  </CardTitle>
+                  <CardDescription>
+                    {client.aiAnalysisGeneratedAt
+                      ? `Generado ${formatDistanceToNow(new Date(client.aiAnalysisGeneratedAt), { addSuffix: true, locale: es })}`
+                      : "Generado recientemente"}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="prose max-w-none text-sm">
+                  <ReactMarkdown>
+                    {analysisPreview || client.aiAnalysis || ""}
+                  </ReactMarkdown>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+          <div className="space-y-6 max-w-xs w-full mx-auto">
+            <Card>
               <CardHeader>
-                <CardTitle className="text-card-foreground flex items-center gap-2">
-                  <Settings className="h-5 w-5" />
-                  Acciones Rápidas
+                <CardTitle className="flex items-center gap-2">
+                  <Settings className="h-5 w-5" /> Acciones Rápidas
                 </CardTitle>
-                <CardDescription>
-                  Registra interacciones y administra el estado del cliente
-                </CardDescription>
+                <CardDescription>Gestión rápida</CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
                 <Button className="w-full" onClick={() => setInteractionDialogOpen(true)}>
-                  <Plus className="h-4 w-4 mr-2" />
-                  Marcar Interacción
+                  <Plus className="h-4 w-4 mr-2" /> Marcar Interacción
                 </Button>
-
-                <div className="grid grid-cols-1 gap-3">
-                  <Button
-                    variant="outline"
-                    className="w-full"
-                    disabled={isAnalyzing}
-                    onClick={handleAnalyze}
-                  >
-                    {isAnalyzing && <Activity className="h-4 w-4 mr-2 animate-spin" />}
-                    {isAnalyzing ? "Analizando..." : "Analizar Cliente"}
-                  </Button>
-                  <Button
-                    variant="secondary"
-                    className="w-full"
-                    disabled={isCategorizing}
-                    onClick={handleCategorize}
-                  >
-                    {isCategorizing && <Activity className="h-4 w-4 mr-2 animate-spin" />}
-                    {isCategorizing ? "Categorizando..." : "Categorizar Automáticamente"}
-                  </Button>
-                </div>
-
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  disabled={isAnalyzing}
+                  onClick={handleAnalyze}
+                >
+                  {isAnalyzing && <Activity className="h-4 w-4 mr-2 animate-spin" />}
+                  {isAnalyzing ? "Analizando..." : "Analizar Cliente (IA)"}
+                </Button>
+                <Button
+                  variant="secondary"
+                  className="w-full"
+                  disabled={isCategorizing}
+                  onClick={handleCategorize}
+                >
+                  {isCategorizing && <Activity className="h-4 w-4 mr-2 animate-spin" />}
+                  {isCategorizing ? "Categorizando..." : "Categorizar Automáticamente"}
+                </Button>
                 {suggestedCategory && (
-                  <div className="text-xs text-muted-foreground">
+                  <p className="text-xs text-muted-foreground">
                     Sugerido: <span className="font-medium">{suggestedCategory}</span>
-                  </div>
+                  </p>
                 )}
               </CardContent>
             </Card>
+            {suggestedCategory && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Activity className="h-5 w-5" /> Categoría sugerida
+                  </CardTitle>
+                  <CardDescription>Último resultado</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Badge variant="outline">{suggestedCategory}</Badge>
+                </CardContent>
+              </Card>
+            )}
           </div>
-          <div className="lg:col-span-2">
+          <div className="space-y-6">
             <Card className="border-border">
               <CardHeader>
                 <CardTitle className="text-card-foreground flex items-center gap-2">
@@ -356,7 +414,6 @@ export default function ClientDetailPage({ params }: ClientDetailPageProps) {
                 </CardTitle>
                 <CardDescription>
                   {interactions?.length || 0} interacción{(interactions?.length || 0) !== 1 ? "es" : ""} registrada
-                  {(interactions?.length || 0) !== 1 ? "s" : ""}
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -414,6 +471,50 @@ export default function ClientDetailPage({ params }: ClientDetailPageProps) {
         clientId={params.id}
         clientName={client.fullName}
       />
+      <DeleteClientDialog
+        open={deleteDialogOpen}
+        onOpenChange={setDeleteDialogOpen}
+        client={{
+          _id: client._id,
+          fullName: client.fullName,
+        }}
+        onDelete={() => router.push("/")}
+      />
+      <AlertDialog open={confirmDeleteOpen} onOpenChange={setConfirmDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Estás seguro?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta acción no se puede deshacer. ¿Deseas continuar?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setConfirmDeleteOpen(false)
+                setDeleteDialogOpen(true)
+              }}
+            >
+              Sí, eliminar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <Dialog open={showAnalysisModal} onOpenChange={setShowAnalysisModal}>
+        <DialogContent className="sm:max-w-[650px] max-h-[75vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Análisis del Cliente (IA)</DialogTitle>
+            <DialogDescription>Resultado generado y guardado.</DialogDescription>
+          </DialogHeader>
+          <div className="prose max-w-none text-sm">
+            <ReactMarkdown>{analysisPreview || client.aiAnalysis || ""}</ReactMarkdown>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowAnalysisModal(false)}>Cerrar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
